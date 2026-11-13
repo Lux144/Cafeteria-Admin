@@ -1,0 +1,157 @@
+services:
+  # ========================================================
+  # Message Broker (Event-Driven Asynchronous Communication)
+  # ========================================================
+  redis:
+    image: redis:7-alpine
+    container_name: cafe-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - cafe-network
+
+  # ========================================================
+  # Microservicio de Usuarios y Autenticación (Auth Service)
+  # Database-per-service pattern (auth.db)
+  # ========================================================
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    container_name: cafe-auth-service
+    environment:
+      - PORT=4001
+      - JWT_SECRET=cafeteria-super-secret-key-2026
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "4001:4001"
+    volumes:
+      - auth-data:/app/services/auth-service/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - cafe-network
+
+  # ========================================================
+  # Microservicio de Catálogo de Productos y Categorías
+  # Database-per-service pattern (catalog.db)
+  # ========================================================
+  catalog-service:
+    build:
+      context: .
+      dockerfile: services/catalog-service/Dockerfile
+    container_name: cafe-catalog-service
+    environment:
+      - PORT=4002
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "4002:4002"
+    volumes:
+      - catalog-data:/app/services/catalog-service/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - cafe-network
+
+  # ========================================================
+  # Microservicio de Pedidos, Pagos y Reportes de Venta
+  # Database-per-service pattern (orders.db)
+  # ========================================================
+  orders-service:
+    build:
+      context: .
+      dockerfile: services/orders-service/Dockerfile
+    container_name: cafe-orders-service
+    environment:
+      - PORT=4003
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "4003:4003"
+    volumes:
+      - orders-data:/app/services/orders-service/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - cafe-network
+
+  # ========================================================
+  # Microservicio de Notificaciones en Tiempo Real (Socket.IO)
+  # Consume eventos asíncronos y emite a cocina/clientes
+  # ========================================================
+  notifications-service:
+    build:
+      context: .
+      dockerfile: services/notifications-service/Dockerfile
+    container_name: cafe-notifications-service
+    environment:
+      - PORT=4004
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "4004:4004"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - cafe-network
+
+  # ========================================================
+  # API Gateway Centralizado
+  # Enrutamiento REST, validación JWT, agregador de salud
+  # ========================================================
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: cafe-api-gateway
+    environment:
+      - PORT=4000
+      - AUTH_SERVICE_URL=http://auth-service:4001
+      - CATALOG_SERVICE_URL=http://catalog-service:4002
+      - ORDERS_SERVICE_URL=http://orders-service:4003
+      - NOTIFICATIONS_SERVICE_URL=http://notifications-service:4004
+      - JWT_SECRET=cafeteria-super-secret-key-2026
+    ports:
+      - "4000:4000"
+    depends_on:
+      - auth-service
+      - catalog-service
+      - orders-service
+      - notifications-service
+    networks:
+      - cafe-network
+
+  # ========================================================
+  # Frontend Web (React + Tailwind + Nginx)
+  # Paneles de Cliente, Cocina KDS y Caja/Punto de Venta
+  # ========================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: cafe-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
+    networks:
+      - cafe-network
+
+networks:
+  cafe-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  auth-data:
+  catalog-data:
+  orders-data:

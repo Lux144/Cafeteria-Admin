@@ -1,0 +1,9 @@
+{
+  "name": "catalog-service",
+  "version": "1.0.0",
+  "description": "Servicio de Catálogo de Productos y Categorías para Cafetería",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  }
+}
